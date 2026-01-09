@@ -1,7 +1,7 @@
 """
 Utility functions for HL7 parsing.
 """
-from typing import Optional
+from typing import Optional, Tuple
 from datetime import datetime
 import re
 
@@ -27,16 +27,12 @@ def parse_hl7_timestamp(hl7_timestamp: str) -> Optional[str]:
     
     timestamp = hl7_timestamp.strip()
     
-    # Remove timezone offset for parsing
+    # Handle timezone offset
     timezone_offset = None
-    if '+' in timestamp:
-        timestamp, timezone_offset = timestamp.split('+')
-    elif '-' in timestamp and timestamp.count('-') > 2:  # Only split if not part of date
-        # Check if it's a timezone offset (at least 4 chars after -)
-        match = re.search(r'([+-]\d{4})$', timestamp)
-        if match:
-            timezone_offset = match.group(0)
-            timestamp = timestamp[:-5]
+    tz_match = re.search(r'([+-]\d{4})$', timestamp)
+    if tz_match:
+        timezone_offset = tz_match.group(1)
+        timestamp = timestamp[:-5]  # Remove timezone offset
     
     # Determine format based on length
     timestamp_len = len(timestamp)
@@ -46,34 +42,42 @@ def parse_hl7_timestamp(hl7_timestamp: str) -> Optional[str]:
             dt = datetime.strptime(timestamp[:14], '%Y%m%d%H%M%S')
         elif timestamp_len >= 12:  # YYYYMMDDHHMM
             dt = datetime.strptime(timestamp[:12], '%Y%m%d%H%M')
+        elif timestamp_len >= 10:  # YYYYMMDDHH
+            dt = datetime.strptime(timestamp[:10], '%Y%m%d%H')
         elif timestamp_len >= 8:  # YYYYMMDD
             dt = datetime.strptime(timestamp[:8], '%Y%m%d')
+        elif timestamp_len >= 6:  # YYYYMM
+            dt = datetime.strptime(timestamp[:6] + '01', '%Y%m%d')
         elif timestamp_len >= 4:  # YYYY
-            dt = datetime.strptime(timestamp[:4], '%Y')
+            dt = datetime.strptime(timestamp[:4] + '0101', '%Y%m%d')
         else:
             return None
         
         # Format as ISO 8601
-        iso_format = dt.isoformat()
+        if timestamp_len >= 14:
+            iso_format = dt.isoformat()
+        elif timestamp_len >= 12:
+            iso_format = dt.isoformat()
+        elif timestamp_len >= 10:
+            iso_format = dt.isoformat()
+        elif timestamp_len >= 8:
+            iso_format = dt.date().isoformat() + "T00:00:00"
+        else:
+            iso_format = dt.date().isoformat() + "T00:00:00"
         
         # Add timezone if provided
         if timezone_offset:
-            if timezone_offset.startswith('+') or timezone_offset.startswith('-'):
-                if len(timezone_offset) == 5:  # ±HHMM
-                    hours = int(timezone_offset[1:3])
-                    minutes = int(timezone_offset[3:5])
-                    if timezone_offset.startswith('-'):
-                        hours = -hours
-                        minutes = -minutes
-                    # Convert to UTC offset format
-                    iso_format += f"{timezone_offset[:3]}:{timezone_offset[3:]}"
+            # Format as ±HH:MM
+            hours = timezone_offset[1:3]
+            minutes = timezone_offset[3:5]
+            iso_format += f"{timezone_offset[0]}{hours}:{minutes}"
         
         return iso_format
     except ValueError:
         return None
 
 
-def parse_name(hl7_name: str) -> tuple:
+def parse_name(hl7_name: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
     Parse HL7 name field into components.
     

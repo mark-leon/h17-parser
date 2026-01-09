@@ -1,0 +1,2 @@
+[console_scripts]
+hl7-parser = hl7_parser.cli:main

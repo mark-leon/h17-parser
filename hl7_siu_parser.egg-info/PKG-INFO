@@ -1,0 +1,70 @@
+Metadata-Version: 2.4
+Name: hl7-siu-parser
+Version: 1.0.0
+Summary: HL7 SIU S12 Appointment Parser
+Author: Your Name
+Author-email: your.email@example.com
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Healthcare Industry
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: Scientific/Engineering :: Medical Science Apps.
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: requires-python
+Dynamic: summary
+
+# HL7 SIU Appointment Parser
+
+A robust Python parser for HL7 SIU S12 appointment messages that converts HL7 v2.x format to structured JSON.
+
+## Features
+
+- Parses HL7 SIU S12 appointment messages
+- Converts to normalized JSON structure
+- Handles real-world HL7 inconsistencies
+- Robust error handling and validation
+- Support for multiple messages per file
+- Command-line interface
+- Docker support
+
+## Installation
+
+### From source
+
+```bash
+git clone <repository-url>
+cd hl7_parser
+pip install -e .
+```
+
+Usage
+Command Line
+bash
+
+# Parse a single file
+
+python -m hl7_parser.cli input.hl7
+
+# Parse and pretty print
+
+python -m hl7_parser.cli input.hl7 --pretty
+
+# Parse and save to file
+
+python -m hl7_parser.cli input.hl7 --output appointments.json
+
+# Using installed package
+
+hl7-parser input.hl7 --pretty

@@ -2,7 +2,6 @@
 Data models for HL7 SIU appointment parsing.
 """
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Optional, Dict, Any
 import json
 

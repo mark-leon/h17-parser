@@ -146,40 +146,71 @@ class HL7Parser:
         if 'SCH' in message.segments:
             sch_fields = message.segments['SCH'][0]
             
-            # Appointment ID (SCH.1)
+            # Appointment ID (SCH.1) - index 1
             if len(sch_fields) > 1 and sch_fields[1]:
                 appointment.appointment_id = sch_fields[1]
             
-            # Appointment datetime (SCH.11.4)
+            # Appointment datetime
+            # In HL7 SIU S12, appointment datetime is typically in SCH.11 (field index 11)
+            # But it can also be in SCH.2 (field index 2)
+            datetime_found = False
+            
+            # Try SCH.11 first (index 11)
             if len(sch_fields) > 11 and sch_fields[11]:
-                # SCH.11 is a composite field: ^^^datetime^^duration
                 components = safe_split(sch_fields[11], message.delimiters['component'])
+                # SCH.11.4 is the datetime (component index 3, 0-based)
                 if len(components) > 3 and components[3]:
                     appointment.appointment_datetime = parse_hl7_timestamp(components[3])
+                    datetime_found = True
             
-            # Reason (SCH.4)
-            if len(sch_fields) > 4 and sch_fields[4]:
-                appointment.reason = sch_fields[4]
+            # If not found, try SCH.2 (index 2)
+            if not datetime_found and len(sch_fields) > 2 and sch_fields[2]:
+                components = safe_split(sch_fields[2], message.delimiters['component'])
+                # SCH.2.4 is often used for datetime (component index 3, 0-based)
+                if len(components) > 3 and components[3]:
+                    appointment.appointment_datetime = parse_hl7_timestamp(components[3])
+                    datetime_found = True
+                # Also check other components in SCH.2
+                elif not datetime_found:
+                    for component in components:
+                        if component and len(component) >= 8:  # Looks like a date
+                            parsed_dt = parse_hl7_timestamp(component)
+                            if parsed_dt:
+                                appointment.appointment_datetime = parsed_dt
+                                datetime_found = True
+                                break
             
-            # Location (SCH.6.3)
+            # Reason (SCH.7) - index 7
+            if len(sch_fields) > 7 and sch_fields[7]:
+                appointment.reason = sch_fields[7]
+            
+            # Location - check multiple possible fields
+            # First try SCH.6.3 (index 6, component 2)
             if len(sch_fields) > 6 and sch_fields[6]:
                 components = safe_split(sch_fields[6], message.delimiters['component'])
                 if len(components) > 2 and components[2]:
                     appointment.location = components[2]
             
-            # Provider from SCH.10
-            if len(sch_fields) > 10 and sch_fields[10]:
-                components = safe_split(sch_fields[10], message.delimiters['component'])
-                provider_id = components[0] if len(components) > 0 and components[0] else None
-                provider_name_field = components[1] if len(components) > 1 and components[1] else None
+            # Provider from SCH.16 (index 16)
+            if len(sch_fields) > 16 and sch_fields[16]:
+                components = safe_split(sch_fields[16], message.delimiters['component'])
+                provider_id = components[4] if len(components) > 4 and components[4] else None
+                provider_name_components = components[:4] if len(components) > 0 else []
                 
-                if provider_id or provider_name_field:
+                if provider_id or any(provider_name_components):
                     provider = Provider()
                     provider.id = provider_id
                     
-                    if provider_name_field:
-                        last_name, first_name, full_name = parse_name(provider_name_field)
-                        provider.name = full_name or f"{first_name or ''} {last_name or ''}".strip()
+                    # Parse provider name from components
+                    # Components are: Last^First^Middle^Suffix^ID
+                    if len(provider_name_components) > 0:
+                        last_name = provider_name_components[0] if len(provider_name_components) > 0 and provider_name_components[0] else None
+                        first_name = provider_name_components[1] if len(provider_name_components) > 1 and provider_name_components[1] else None
+                        middle_name = provider_name_components[2] if len(provider_name_components) > 2 and provider_name_components[2] else None
+                        suffix = provider_name_components[3] if len(provider_name_components) > 3 and provider_name_components[3] else None
+                        
+                        name_parts = [p for p in [first_name, middle_name, last_name, suffix] if p]
+                        provider.name = ' '.join(name_parts) if name_parts else None
                     
                     appointment.provider = provider
         
@@ -188,21 +219,21 @@ class HL7Parser:
             pid_fields = message.segments['PID'][0]
             patient = Patient()
             
-            # Patient ID (PID.3)
+            # Patient ID (PID.3) - index 3
             if len(pid_fields) > 3 and pid_fields[3]:
                 patient.id = pid_fields[3]
             
-            # Patient name (PID.5)
+            # Patient name (PID.5) - index 5
             if len(pid_fields) > 5 and pid_fields[5]:
                 last_name, first_name, _ = parse_name(pid_fields[5])
                 patient.last_name = last_name
                 patient.first_name = first_name
             
-            # Date of birth (PID.7)
+            # Date of birth (PID.7) - index 7
             if len(pid_fields) > 7 and pid_fields[7]:
                 patient.dob = parse_hl7_timestamp(pid_fields[7])
             
-            # Gender (PID.8)
+            # Gender (PID.8) - index 8
             if len(pid_fields) > 8 and pid_fields[8]:
                 patient.gender = pid_fields[8]
             
@@ -212,27 +243,35 @@ class HL7Parser:
         if 'PV1' in message.segments:
             pv1_fields = message.segments['PV1'][0]
             
-            # Provider (PV1.7)
+            # Provider (PV1.7) - index 7
             if len(pv1_fields) > 7 and pv1_fields[7]:
                 components = safe_split(pv1_fields[7], message.delimiters['component'])
-                provider_id = components[0] if len(components) > 0 and components[0] else None
-                provider_name_field = components[1] if len(components) > 1 and components[1] else None
+                provider_id = components[4] if len(components) > 4 and components[4] else None
+                provider_name_components = components[:4] if len(components) > 0 else []
                 
-                if provider_id or provider_name_field:
+                if provider_id or any(provider_name_components):
                     provider = appointment.provider or Provider()
-                    provider.id = provider_id or provider.id
+                    if provider_id:
+                        provider.id = provider_id
                     
-                    if provider_name_field:
-                        last_name, first_name, full_name = parse_name(provider_name_field)
-                        provider.name = full_name or f"{first_name or ''} {last_name or ''}".strip()
+                    # Parse provider name from components
+                    if len(provider_name_components) > 0:
+                        last_name = provider_name_components[0] if len(provider_name_components) > 0 and provider_name_components[0] else None
+                        first_name = provider_name_components[1] if len(provider_name_components) > 1 and provider_name_components[1] else None
+                        middle_name = provider_name_components[2] if len(provider_name_components) > 2 and provider_name_components[2] else None
+                        suffix = provider_name_components[3] if len(provider_name_components) > 3 and provider_name_components[3] else None
+                        
+                        name_parts = [p for p in [first_name, middle_name, last_name, suffix] if p]
+                        provider.name = ' '.join(name_parts) if name_parts else None
                     
                     appointment.provider = provider
             
-            # Location from PV1.3 (overrides SCH if present)
+            # Location from PV1.3 (overrides SCH if present) - index 3
             if len(pv1_fields) > 3 and pv1_fields[3]:
                 components = safe_split(pv1_fields[3], message.delimiters['component'])
-                if len(components) > 1 and components[1]:
-                    appointment.location = components[1]
+                # PV1.3.1 is the location type (component index 0)
+                if len(components) > 0 and components[0]:
+                    appointment.location = components[0]
         
         return appointment
     
@@ -323,7 +362,11 @@ class HL7FileParser:
             HL7ParseError: For parsing errors
         """
         try:
-            with open(filepath, 'r') as f:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            # Try with latin-1 encoding if utf-8 fails
+            with open(filepath, 'r', encoding='latin-1') as f:
                 content = f.read()
         except IOError as e:
             raise FileNotFoundError(f"Could not read file {filepath}: {str(e)}")
